@@ -1,63 +1,96 @@
-# Personal Assistant (multi-user)
+# 🤝 Personal Assistant
 
-Python rewrite of the n8n "Personal Assistant" workflow. Same Gemini agent, same system
-prompt (`sysprompt.md`), same 15-turn memory, same tools, but every person signs in with
-their **own** Google account, so the assistant only touches their own data.
+An AI personal assistant that manages your **calendar, email, tasks, notes and expenses** through a simple chat interface. Built with **Gemini** and **Streamlit**, it works across multiple users: everyone signs in with their own Google account and the assistant only ever touches their own data.
 
-| n8n piece | Now |
+It started as an [n8n](https://n8n.io) workflow and was rewritten in Python so it can be deployed and shared with friends and family.
+
+## ✨ Features
+
+| Area | What it can do |
 |---|---|
-| Webhook + AI Agent + Gemini | `agent.py` (google-genai, automatic tool calling) |
-| 15 Google tools, SerpApi, Calculator | `tools.py` (names match `sysprompt.md`) |
-| Your Google credentials in n8n | `auth.py` (Google sign-in per user) |
-| Streamlit page → webhook | `app.py` calls the agent directly |
+| 💬 Q&A | Answer general questions, with live Google search (SerpApi) for current info |
+| 📅 Calendar | Create events, look up a single event, list events for a day or week |
+| ✉️ Gmail | Read and summarize emails, send new emails, reply in an existing thread |
+| ✅ Tasks | Create, list, read and delete Google Tasks |
+| 📝 Notes | Create Google Docs notes, append to them, read them back |
+| 💸 Expenses | Log expenses to a Google Sheet, fetch history, calculate totals |
 
-Your old files are untouched: `app_n8n.py` is your original Streamlit app, and the n8n
-workflow still works as a backup.
+The agent understands relative dates ("tomorrow at 5pm", "next Monday"), remembers the last 15 turns of the conversation, and asks before deleting anything.
 
-## Your existing data
+## 🧱 How it works
 
-All your calendar, Gmail, Tasks and Docs data lives in your Google account, so signing in
-with that same account shows it all. For expenses, set `OWNER_EMAIL` (your Google email) and
-`OWNER_EXPENSE_SHEET_ID` (the ID from your sheet's URL) and the assistant keeps writing to
-your existing "Expense Tracking" sheet. Other users automatically get their own
-"Expense Tracking (Personal Assistant)" sheet, created the first time they log an expense.
-
-Tasks use each user's default Google Tasks list.
-
-## 1. Google Cloud setup (one time)
-
-1. Create a project at https://console.cloud.google.com.
-2. **APIs & Services → Library**: enable Gmail API, Google Calendar API, Google Tasks API,
-   Google Docs API, Google Sheets API, Google Drive API.
-3. **OAuth consent screen**: user type *External*, publishing status *Testing*. Add every
-   friend/family Gmail address under **Test users** (limit 100).
-4. **Credentials → Create credentials → OAuth client ID → Web application**. Add authorized
-   redirect URIs: `http://localhost:8501` (local) and later your deployed URL.
-5. Copy the client ID and secret.
-
-While in Testing mode Google shows an "unverified app" warning (Advanced → Continue) and
-refresh tokens expire after 7 days, so users may need to sign in again weekly. Going fully
-public requires Google's app verification, which is stricter for Gmail scopes.
-
-## 2. Run locally
-
-```bash
-cp .env.example .env        # fill in the keys
-uv sync                     # installs dependencies, refreshes uv.lock
-uv run streamlit run app.py
+```
+Streamlit chat UI  ──►  Gemini agent (automatic tool calling)  ──►  Google APIs
+        ▲                         │                                 (Calendar, Gmail,
+        │                         ▼                                  Tasks, Docs, Sheets)
+ Google sign-in (OAuth)     SerpApi search, calculator
 ```
 
-## 3. Deploy (Streamlit Community Cloud)
+- **`app.py`**: Streamlit UI and chat loop
+- **`auth.py`**: per-user Google OAuth sign-in
+- **`agent.py`**: Gemini agent with the system prompt and conversation memory
+- **`tools.py`**: the 17 tools the agent can call, bound to the signed-in user's credentials
+- **`sysprompt.md`**: the agent's instructions
+- **`app_n8n.py`**: the original frontend for the n8n version
 
-1. Push this folder to GitHub (`.env` is git-ignored).
-2. Create the app at https://share.streamlit.io, main file `app.py`.
-3. Paste the contents of `.streamlit/secrets.toml.example` (filled in) into **Secrets**,
-   with `APP_URL` set to your real app URL.
-4. Add that same URL as an authorized redirect URI in Google Cloud.
+## 🚀 Quick start
 
-## Things to know
+**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), a Gemini API key, and a Google Cloud project.
 
-- Your `GEMINI_API_KEY` and `SERPAPI_API_KEY` pay for everyone's usage. Use `ALLOWED_EMAILS`
-  to restrict the app to people you trust.
-- Chat memory lives in the browser session; refreshing the page signs the user out and clears it.
-- Deleting is still protected by the system prompt ("confirm destructive actions").
+1. **Google Cloud setup**
+   - Enable the Gmail, Calendar, Tasks, Docs, Sheets and Drive APIs.
+   - Configure the OAuth consent screen (External, Testing) and add yourself and your friends as test users.
+   - Create an OAuth client of type **Web application** with the redirect URI `http://localhost:8501`.
+
+2. **Configure**
+   ```bash
+   cp .env.example .env     # then fill in your keys
+   ```
+
+3. **Run**
+   ```bash
+   uv sync
+   uv run streamlit run app.py
+   ```
+
+## ⚙️ Configuration
+
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | ✅ | Google AI Studio API key |
+| `GEMINI_MODEL` | | Model name (default `gemini-3.5-flash-lite`) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | ✅ | OAuth web client credentials |
+| `APP_URL` | ✅ | Public URL of the app; must match an authorized redirect URI |
+| `SERPAPI_API_KEY` | | Enables web search |
+| `ALLOWED_EMAILS` | | Comma-separated emails allowed to use the app (empty = any test user) |
+| `OWNER_EMAIL`, `OWNER_EXPENSE_SHEET_ID` | | Keep using an existing expense sheet for the owner |
+| `DEFAULT_TIMEZONE` | | Fallback timezone (default `Asia/Kolkata`) |
+
+## ☁️ Deployment
+
+- **Streamlit Community Cloud:** set the main file to `app.py`, paste the settings from `.streamlit/secrets.toml.example` into *Secrets*, and add the deployed URL as an authorized redirect URI in Google Cloud.
+- **Render / Railway / Fly.io:** start command `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`, with the same settings as environment variables.
+- **Vercel is not supported**, since Streamlit needs a long-running server.
+
+## 🔒 Privacy & security
+
+- Each user authenticates with their own Google account; tool calls use that user's token only.
+- No user data or tokens are stored on the server. Credentials and chat history live in the browser session and are cleared on sign-out or refresh.
+- Never commit `.env` or `secrets.toml`; both are in `.gitignore`.
+- Your Gemini and SerpApi keys are shared by all users, so use `ALLOWED_EMAILS` to limit access.
+
+## ⚠️ Limitations
+
+- While the Google OAuth app is in **Testing** mode, it is limited to 100 test users, shows an "unverified app" warning, and sign-ins expire after 7 days. A public launch requires Google's app verification (stricter for Gmail scopes).
+- Chat memory is per browser session.
+
+## 🗺️ Ideas for next steps
+
+- Persistent chat history and "stay signed in"
+- Confirmation buttons before sending emails or deleting tasks
+- Voice input and a daily morning-brief summary
+- Per-user usage limits
+
+## 🛠️ Tech stack
+
+Python · Streamlit · Google Gemini (`google-genai`) · Google Workspace APIs · OAuth 2.0 · SerpApi
